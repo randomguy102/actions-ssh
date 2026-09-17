@@ -1,0 +1,93 @@
+name: action-ssh
+
+on:
+  workflow_dispatch:
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: 🧹 Free up runner disk space
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h /
+
+          sudo rm -rf /usr/share/dotnet \
+                      /usr/local/lib/android \
+                      /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL \
+                      /usr/local/.ghcup \
+                      /usr/local/share/powershell \
+                      /usr/local/share/chromium \
+                      /usr/share/swift \
+                      /opt/az \
+                      /usr/local/share/boost \
+                      /opt/microsoft \
+                      /opt/pipx
+
+          sudo docker image prune --all --force || true
+          sudo apt-get clean || true
+
+          echo "Disk usage after cleanup:"
+          df -h /
+
+      - name: 📦 Install Nix & Home Manager
+        run: |
+          # Install Nix using Determinate Systems
+          curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --no-confirm
+
+          . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+
+          sudo mkdir -p /etc/nix
+          echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
+          sudo systemctl restart nix-daemon || true
+
+          # Install Home Manager via flakes
+          nix profile install nixpkgs#home-manager
+
+          echo "Nix and Home Manager installed successfully!"
+          nix --version
+          home-manager --version
+
+      - name: 🔐 Configure SSH & Tunnel
+        env:
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-server
+          sudo systemctl start ssh || sudo systemctl start sshd
+
+          sudo -u runner mkdir -p /home/runner/.ssh
+          echo "$SSH_PUBLIC_KEY" | sudo -u runner tee /home/runner/.ssh/authorized_keys > /dev/null
+          sudo chmod 600 /home/runner/.ssh/authorized_keys
+          sudo chown -R runner:runner /home/runner/.ssh
+
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+          chmod +x /usr/local/bin/cloudflared
+
+          nohup cloudflared tunnel --url ssh://localhost:22 --no-autoupdate > /tmp/cf.log 2>&1 &
+
+          CF_URL=""
+          for i in {1..30}; do
+            CF_URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1)
+            [ -n "$CF_URL" ] && break
+            sleep 2
+          done
+
+          if [ -z "$CF_URL" ]; then
+            echo "Failed to get Cloudflare URL"
+            cat /tmp/cf.log
+            exit 1
+          fi
+
+          HOST=${CF_URL#https://}
+
+          echo " 🌐 URL      : $CF_URL"
+          echo " 👤 Username : runner"
+          echo " 💻 SSH Command:"
+          echo " ssh -o ProxyCommand='cloudflared access ssh --hostname $HOST' runner@$HOST"
+
+      - name: ⏳ Keep alive
+        run: sleep 21600
