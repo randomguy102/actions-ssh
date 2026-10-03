@@ -44,12 +44,8 @@ jobs:
           echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
           sudo systemctl restart nix-daemon || true
 
-          # Install Home Manager via flakes
-          nix profile install nixpkgs#home-manager
-
-          echo "Nix and Home Manager installed successfully!"
+          echo "Nix installed successfully!"
           nix --version
-          home-manager --version
 
       - name: 🔐 Configure SSH & Tunnel
         env:
