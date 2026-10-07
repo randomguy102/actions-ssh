@@ -34,18 +34,26 @@ jobs:
           df -h /
 
       - name: 📦 Install Nix & Home Manager
+        env:
+          HOME_MANAGER_COMMAND: ${{ secrets.HOME_MANAGER_COMMAND }}
         run: |
           # Install Nix using Determinate Systems
           curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --no-confirm
-
+      
           . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-
+      
           sudo mkdir -p /etc/nix
           echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf
           sudo systemctl restart nix-daemon || true
-
+      
           echo "Nix installed successfully!"
           nix --version
+      
+          echo "Running Home Manager..."
+          eval "$HOME_MANAGER_COMMAND"
+
+          echo "Changing shell"
+          sudo chsh -s "$(which zsh)" "$USER"
 
       - name: 🔐 Configure SSH & Tunnel
         env:
