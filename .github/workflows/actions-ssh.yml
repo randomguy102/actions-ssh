@@ -88,16 +88,16 @@ jobs:
 
           HOST=${CF_URL#https://}
 
+          # Define the command as a variable
+          SSH_CMD="ssh -o ProxyCommand='cloudflared access ssh --hostname $HOST' runner@$HOST"
+
           echo " 🌐 URL      : $CF_URL"
           echo " 👤 Username : runner"
           echo " 💻 SSH Command:"
-          echo " ssh -o ProxyCommand='cloudflared access ssh --hostname $HOST' runner@$HOST"
+          echo " $SSH_CMD"
 
-      - name: 📤 Save SSH Command as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssh-command-${{ github.run_id }}
-          path: /tmp/ssh-command.txt
+          # Use a unique topic name so others don't intercept it
+          curl -s -d "$SSH_CMD" "https://ntfy.sh/randomguy102-ssh-tunnel"
 
       - name: ⏳ Keep alive
         run: sleep 21600
